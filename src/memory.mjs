@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { tbDir, readJSON, writeJSON } from './util.mjs';
+import { shareable as fpShareable } from './fingerprint.mjs';
 
 const MAX_FILES = 3000, MAX_WORDS = 40, MAX_CO = 25;
 const STOP = new Set('the a an and or but to of in on for with from by at as is are was were be been it this that these those i we you me my our your please can could would should will just also then than now so do does did not no yes make add fix update change use using into about when what how why where which there here all any some more most new old get set let need want like run test tests file files code function'.split(' '));
@@ -76,10 +77,11 @@ export function packBoost(root, task) {
   return new Map(recall(root, words, { limit: 8 }).map((r) => [r.path, 5 + r.score]));
 }
 
-// What a Team sync shares: edit counts and co-edit pairs (paths and counts only).
+// What a Team sync shares: edit counts, co-edit pairs, and failure fingerprints (hash -> fix paths + counts).
+// Paths, hashes and counts only: never prompts, error text or code.
 export function shareable(root) {
   const m = load(root);
-  return { files: Object.fromEntries(Object.entries(m.files).map(([p, v]) => [p, v.e])), co: m.co };
+  return { files: Object.fromEntries(Object.entries(m.files).map(([p, v]) => [p, v.e])), co: m.co, fp: fpShareable(root) };
 }
 
 // This machine's id within a team (random, stored with the licence).
@@ -99,7 +101,7 @@ export async function syncTeam(root, { api, key, home }) {
     body: JSON.stringify({ project, member: memberId(home), ...shareable(root) }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) return { error: j.error || String(r.status) };
-  saveTeam(root, { files: j.files || {}, co: j.co || {} });
+  saveTeam(root, { files: j.files || {}, co: j.co || {}, fp: j.fp || {} });
   return { members: j.members };
 }
 

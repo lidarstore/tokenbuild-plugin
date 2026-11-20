@@ -130,9 +130,14 @@ export function find(idx, query, limit = 15) {
 }
 
 // Context pack: the files a task most likely needs, as signatures + line numbers, under budget.
-export function pack(idx, task, budget = 4000, boost = null) {
+export function rank(idx, task, boost = null) {
   const terms = [...new Set(words(task))].filter((w) => w.length > 2);
-  const ranked = Object.entries(idx.files).map(([f, v]) => [f, v, score(f, v, terms) + (boost?.get(f) || 0)]).filter((x) => x[2] > 0).sort((a, b) => b[2] - a[2]);
+  return Object.entries(idx.files).map(([f, v]) => [f, v, score(f, v, terms) + (boost?.get(f) || 0)]).filter((x) => x[2] > 0).sort((a, b) => b[2] - a[2]);
+}
+export const taskWords = (task) => [...new Set(words(task))].filter((w) => w.length > 2);
+
+export function pack(idx, task, budget = 4000, boost = null) {
+  const ranked = rank(idx, task, boost);
   const chosen = new Map(ranked.slice(0, 8).map(([f, v]) => [f, v]));
   for (const [f, v] of ranked.slice(0, 4)) for (const d of v.deps || []) if (!chosen.has(d) && chosen.size < 12) chosen.set(d, idx.files[d]);
   const out = [`# Context pack: ${task.slice(0, 80)}`, 'Files likely involved (path:line symbol). Read only the line ranges you need.'];
@@ -145,5 +150,6 @@ export function pack(idx, task, budget = 4000, boost = null) {
     out.push(head, body); used += t;
   }
   if (chosen.size === 0) out.push('\nNo matching files. Try tb_find with a symbol name.');
+  else { const whole = [...chosen.values()].reduce((a, v) => a + (v?.t || 0), 0); out.push(`\n(TokenBuild: this pack is ~${used} tokens; reading these ${chosen.size} files whole would be ~${whole}.)`); }
   return out.join('\n');
 }

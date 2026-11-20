@@ -1,8 +1,8 @@
 {
   "name": "tokenbuild",
   "displayName": "TokenBuild",
-  "version": "0.3.1",
-  "description": "Build More. Use Less. Cuts Claude Code token use with local tools (Loop Breaker, Fresh Start, Repo Memory, Output Shrinker, Waste Guard, repo index) and shows what you saved.",
+  "version": "0.4.0",
+  "description": "Build More. Use Less. Cuts Claude Code token use and turns with local tools (Context Ledger, Verify Loop, Task Brief, Fingerprints, Task State, Loop Breaker, Fresh Start, Repo Memory, Output Shrinker, Waste Guard, repo index) and shows what you saved.",
   "author": {
     "name": "TokenBuild LLC",
     "email": "support@tokenbuild.ai",

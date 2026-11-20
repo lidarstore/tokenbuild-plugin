@@ -20,12 +20,18 @@ Prefer a terminal? `npx tokenbuild login <key>` once, then `npx tokenbuild init`
 
 | Tool | What it does |
 | --- | --- |
+| Context Ledger | Knows what's already in Claude's context: an unchanged re-read is answered from context, a changed one with only the changed lines |
+| Verify Loop | After each edit, runs only the tests that edit can affect (import graph), in the background; one line back: pass, or the failing assertion |
+| Task Brief | With each prompt: likely files with line numbers, the check to run, past failures fixed there; a vague prompt gets one question first |
+| Next-Read | Learns which files you open after which, and gives Claude their outlines up front |
+| Fingerprints | Remembers which files fixed each error; the next time it appears, Claude is pointed there (Team: shared as hashes and paths) |
+| Task State | A live plan, files, checks, verified facts and open questions; new sessions and subagents resume from it, parallel agents claim items (`tb_task`) |
 | Loop Breaker | Same failure three times, or Claude undoing its own edit: Claude is told what was tried and to change approach |
 | Fresh Start | Past ~120K tokens, a handoff note is saved; `/clear` and the new session starts from it at about 2K tokens |
 | Repo Memory | Learns which files tasks change and which change together; points similar tasks at them |
 | Output Shrinker | `tokenbuild run npm test`: errors and summary only, same exit code, full log saved |
 | Waste Guard | Blocks lockfiles, build output, huge whole-file reads and unchanged re-reads |
-| Repo index | `tb_map`, `tb_find`, `tb_pack`: exact files and lines under a token budget |
+| Repo index | `tb_map`, `tb_find`, `tb_pack`, `tb_brief`: exact files and lines under a token budget |
 | Scout agent | `tokenbuild:scout` does searches and log reading on a cheaper model (Haiku) |
 | Auto-format | Your project's own formatter runs on edited files once per turn |
 | Local Boost | Optional: a free local model (Ollama, this machine only) reads big files for Claude |
@@ -37,10 +43,11 @@ Commands: `/tokenbuild:setup`, `/tokenbuild:stats`, `/tokenbuild:audit` (free), 
 Your source code, file contents and prompts never leave your machine. TokenBuild never asks for or uses your Claude login.
 
 - **Runs on your machine:** Node.js scripts in this plugin, started by Claude Code hooks (before and after tool calls, when you send a prompt, at the end of a turn, at session start and before compacting) and by a local MCP server. Each hook prints at most a short note into Claude's context, such as "this check failed the same way 3 times".
+- **Runs your tests after edits:** the Verify Loop runs your project's own test runner (node --test, Vitest, Jest, pytest or go test, detected from your config) on the test files an edit can affect, in the background, with a 2-minute limit. Set `"verify": false` in `.tokenbuild/config.json` to turn it off, or set `"verify"` to your own command with `{files}`.
 - **Runs commands only when asked:** `tokenbuild run <command>` runs the command Claude or you give it. At the end of a turn, auto-format runs the formatter your project already configures (Prettier, Ruff, gofmt and similar) on files Claude edited; set `"format": false` in `.tokenbuild/config.json` to turn it off.
 - **Reads locally:** your project's files (to build the index), and Claude Code's own session logs in `~/.claude/projects` (for the audit, loop checks and handoff notes).
 - **Writes locally:** `.tokenbuild/` in each project (index, memory, logs, handoff notes, savings ledger; it ignores itself in git), and `~/.tokenbuild/` (your CLI key, if you use `login`, and a cached plan status).
-- **Sends to app.tokenbuild.ai:** your CLI key, to confirm your plan (at most twice a day, and when you run setup, `login` or `init`). Only when you run `tokenbuild sync`: daily counts per tool (no code, no file names) and, on Team plans, the paths of files edited together and how often, so teammates' Repo Memory can use them.
+- **Sends to app.tokenbuild.ai:** your CLI key, to confirm your plan (at most twice a day, and when you run setup, `login` or `init`). Only when you run `tokenbuild sync`: daily counts per tool (no code, no file names) and, on Team plans, the paths of files edited together and how often, and error fingerprints (a one-way hash of a normalized error line) with the paths of the files that fixed them, so teammates' Repo Memory and Fingerprints can use them. Error text never leaves your machine.
 - **Talks to localhost only:** Local Boost calls Ollama on this machine and refuses any other host.
 
 Privacy policy: [tokenbuild.ai/privacy](https://www.tokenbuild.ai/privacy.html). Terms: [tokenbuild.ai/terms](https://www.tokenbuild.ai/terms.html).

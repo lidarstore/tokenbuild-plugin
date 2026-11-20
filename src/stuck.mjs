@@ -12,7 +12,7 @@ export const fresh = () => ({ fails: {}, edits: [], reverts: {}, warned: {}, sin
 
 // "npm test -- --foo" and "npm test" are the same check; numbers, hashes and paths don't make a new error.
 const normCmd = (c) => String(c).replace(/^\.tokenbuild\/run\s+|^"[^"]*tokenbuild[^"]*"\s+run\s+--\s+/, '').replace(/\s+/g, ' ').trim().slice(0, 120);
-const normErr = (l) => l.replace(/\b0x[0-9a-f]+\b|\b[0-9a-f]{7,}\b/gi, '#').replace(/\d+(\.\d+)?/g, 'N').replace(/(["'`]).*?\1/g, '"…"').trim().slice(0, 160);
+export const normErr = (l) => l.replace(/\b0x[0-9a-f]+\b|\b[0-9a-f]{7,}\b/gi, '#').replace(/\d+(\.\d+)?/g, 'N').replace(/(["'`]).*?\1/g, '"…"').trim().slice(0, 160);
 
 export function firstError(text) {
   const lines = String(text).split('\n');
@@ -22,6 +22,16 @@ export function firstError(text) {
 }
 
 const editKey = (i) => [i.file_path, h(i.old_string ?? ''), h(i.new_string ?? i.content ?? '')];
+
+// A Bash call's normalized command and first error line (null when it passed).
+// Failed commands arrive as PostToolUseFailure with an `error` string; successes as PostToolUse.
+export function bashOutcome(input) {
+  const { tool_input: ti = {}, tool_response: tr = {} } = input;
+  const failed = input.hook_event_name === 'PostToolUseFailure' || typeof input.error === 'string';
+  const text = failed ? String(input.error || '') : typeof tr === 'string' ? tr : [tr.stdout, tr.stderr].filter(Boolean).join('\n');
+  const err = firstError(text) || (failed ? (text.split('\n').find((l) => l.trim() && !/^exit code \d+$/i.test(l.trim())) || 'non-zero exit').trim() : null);
+  return { cmd: normCmd(ti.command || ''), err };
+}
 
 // Feed one tool call (PostToolUse input). Returns a message for Claude when a loop is detected, else null.
 export function observe(state, input) {
@@ -42,11 +52,7 @@ export function observe(state, input) {
     return null;
   }
   if (tool !== 'Bash') return null;
-  // Failed commands arrive as PostToolUseFailure with an `error` string; successes as PostToolUse.
-  const failed = input.hook_event_name === 'PostToolUseFailure' || typeof input.error === 'string';
-  const text = failed ? String(input.error || '') : typeof tr === 'string' ? tr : [tr.stdout, tr.stderr].filter(Boolean).join('\n');
-  const err = firstError(text) || (failed ? (text.split('\n').find((l) => l.trim() && !/^exit code \d+$/i.test(l.trim())) || 'non-zero exit').trim() : null);
-  const cmd = normCmd(ti.command || '');
+  const { cmd, err } = bashOutcome(input);
   if (!err || !cmd) { for (const k of Object.keys(state.fails)) if (k.startsWith(cmd + '|')) { delete state.fails[k]; delete state.warned[k]; } return null; } // it passed: loop over
   const sig = cmd + '|' + h(normErr(err));
   state.fails[sig] = (state.fails[sig] || 0) + 1;

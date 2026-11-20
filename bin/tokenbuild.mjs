@@ -40,18 +40,21 @@ const HELP = `tokenbuild — Build More. Use Less.
   find <name>                                   Locate a symbol or file (path:line)
   pack "<task>" [--budget 4000]                 Context pack for a task
   stats                                         Tokens kept out of context in this repo
+  verify [file]                                 Run only the tests a change to <file> can affect (or show the last result)
+  task [--reset]                                Show the task state TokenBuild keeps for handoffs and subagents
   boost [on|off] [--model name]                 Local Boost: a local model (Ollama) reads big files for Claude
   ask "<question>" <file>                       Ask the local model about a file (Local Boost)
   sync                                          Send daily counts (no code) to your dashboard
   guard [--reset]                               (hook) Claude Code PreToolUse guard
   format [--track]                              (hook) Format edited files with your configured formatter
   handoff                                       Save a handoff note so a fresh session picks up where you are
-  hook post|prompt|stop|start|precompact        (hook) Loop Breaker, Repo Memory, Fresh Start
+  hook post|prompt|stop|start|precompact        (hook) Context Ledger, Verify Loop, Task Brief, Next-Read,
+                                                Fingerprints, Task State, Loop Breaker, Repo Memory, Fresh Start
   mcp                                           (server) MCP stdio server`;
 
 // Paid tools need an active trial or plan (cached check; offline-safe). The audit is free.
 // init and login check online; hooks, run and mcp degrade to doing nothing instead of failing.
-const GATED = new Set(['index', 'map', 'find', 'pack', 'boost', 'ask', 'handoff']);
+const GATED = new Set(['index', 'map', 'find', 'pack', 'boost', 'ask', 'handoff', 'verify', 'task']);
 if (GATED.has(cmd)) {
   const { licensed, explain } = await import('../src/license.mjs');
   const l = licensed();
@@ -122,16 +125,21 @@ switch (cmd) {
     const { num } = await import('../src/util.mjs');
     const { tally } = await import('../src/ledger.mjs');
     const t = tally(readLedger());
-    const total = t.tok_blocked + t.tok_shrunk + t.tok_local + t.tok_handoff;
+    const total = t.tok_blocked + t.tok_shrunk + t.tok_local + t.tok_handoff + t.tok_dedup;
     out([`~${num(total)} tokens kept out of Claude's context in this repo`,
       `  Waste Guard     ${num(t.blocks)} reads blocked, ~${num(t.tok_blocked)} tokens`,
+      `  Context Ledger  ${num(t.dedups)} re-reads answered from context or as a diff, ~${num(t.tok_dedup)} tokens`,
       `  Output Shrinker ${num(t.shrinks)} logs condensed, ~${num(t.tok_shrunk)} tokens`,
       `  Local Boost     ${num(t.local_calls)} files read locally, ~${num(t.tok_local)} tokens`,
       `  Fresh Start     ${num(t.handoffs)} fresh sessions from a handoff, ~${num(t.tok_handoff)} tokens`,
       `  Loop Breaker    ${num(t.loops)} loops caught`,
       `  Repo Memory     ${num(t.recalls)} recalls`,
       `  Auto-format     ${num(t.formats)} files formatted`,
-      `  Repo tools      ${num(t.tool_calls)} calls (tb_map, tb_find, tb_pack)`].join('\n'));
+      `  Verify Loop     ${num(t.verifies)} targeted test runs, ${num(t.verify_fails)} failures caught`,
+      `  Task Brief      ${num(t.briefs)} briefs`,
+      `  Next-Read       ${num(t.predicts)} predictions, ${num(t.predict_hits)} opened`,
+      `  Fingerprints    ${num(t.fp_hits)} known fixes found`,
+      `  Repo tools      ${num(t.tool_calls)} calls (tb_map, tb_find, tb_pack, tb_brief)`].join('\n'));
     break;
   }
   case 'sync': { // daily counts; on Team, also repo-memory file paths + counts. Never code, file contents or prompts
@@ -194,6 +202,29 @@ switch (cmd) {
     const r = H.write(root, t.p, t.id);
     if (!r) { out('Could not read the conversation.'); process.exitCode = 1; break; }
     out(`Handoff saved to .tokenbuild/handoff.md (~${r.tokens} tokens, from a ~${r.ctx} token conversation). Your next new Claude Code session here starts from it.`);
+    break;
+  }
+  case 'verify-run': { // internal: background worker started by the post hook
+    const { work } = await import('../src/verify.mjs');
+    if (args[0] && fs.existsSync(path.join(args[0], '.tokenbuild'))) await work(args[0]);
+    break;
+  }
+  case 'verify': {
+    const V = await import('../src/verify.mjs');
+    if (!args[0]) { const r = V.lastResult(root); out(r ? (r.ok ? `Pass: ${r.tests.join(', ')}` : `Fail: ${r.tests.join(', ')}: ${r.fail}\nLog: ${r.log}`) : 'No test run yet. Usage: tokenbuild verify <file>'); break; }
+    const { loadIndex } = await import('../src/repo.mjs');
+    const rel = path.relative(root, path.resolve(args[0]));
+    const tests = V.impacted(loadIndex(root), rel).filter((t) => V.runnerFor(root, t));
+    if (!tests.length) { out(`No tests found that can see ${rel}, or no supported test runner.`); break; }
+    const r = await V.runTests(root, tests);
+    out(r.ok ? `Pass: ${tests.join(', ')} (${(r.ms / 1000).toFixed(1)}s)` : `Fail: ${r.fail}\nLog: ${r.log}`);
+    if (!r.ok) process.exitCode = 1;
+    break;
+  }
+  case 'task': {
+    const T = await import('../src/task.mjs');
+    if (flags.reset) { fs.rmSync(path.join(root, '.tokenbuild', 'task.json'), { force: true }); out('Task state cleared.'); break; }
+    out(flags.json ? JSON.stringify(T.load(root)) : T.render(T.load(root)));
     break;
   }
   case 'guard': {

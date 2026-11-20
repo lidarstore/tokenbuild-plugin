@@ -6,8 +6,10 @@ import { readJSON, writeJSON, tbDir } from './util.mjs';
 // Kept tiny on purpose: CLAUDE.md is sent with every request (and to every subagent).
 const BLOCK = (scout) => `<!-- tokenbuild -->
 ## Token rules (TokenBuild)
-- Start a task with tb_pack (or tb_map); use tb_find before Grep/Glob.
-- Read line ranges (offset/limit) of large files. Don't re-read unchanged files.
+- Start from the TokenBuild brief (or tb_brief/tb_pack); use tb_find before Grep/Glob.
+- Read line ranges of large files. TokenBuild answers re-reads of unchanged lines from context.
+- After edits, TokenBuild runs only the affected tests and reports one line: don't run the full suite.
+- Subagents and new sessions: tb_task has the live plan; claim an item before working on it.
 - Run tests, builds, installs and linters as \`.tokenbuild/run <command>\`: errors + summary, full log saved.${scout ? '\n- Delegate searches and log reading to the tb-scout agent; it runs on a cheaper model.' : ''}
 <!-- /tokenbuild -->`;
 
@@ -22,7 +24,7 @@ export const ROUTES = {
 const SCOUT = (model) => `---
 name: tb-scout
 description: Fast, low-cost explorer. Use for finding where things are, reading logs or large files, and answering "where/what/which" questions about the codebase. Returns paths with line numbers and short facts, not code dumps.
-tools: Read, Grep, Glob, mcp__tokenbuild__tb_find, mcp__tokenbuild__tb_map, mcp__tokenbuild__tb_pack, mcp__tokenbuild__tb_digest
+tools: Read, Grep, Glob, mcp__tokenbuild__tb_find, mcp__tokenbuild__tb_map, mcp__tokenbuild__tb_pack, mcp__tokenbuild__tb_brief, mcp__tokenbuild__tb_digest
 model: ${model}
 ---
 You are a read-only scout for the main agent. Find the answer with the fewest reads: tb_find or tb_pack first, then Read only the line ranges you need.
@@ -50,7 +52,7 @@ export function init(root, cmd = cliCommand(), { route = 'balanced', format = tr
   const add = (event, matcher, command) => { s.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command }] }); };
   for (const e of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'PreCompact', 'SessionStart', 'Stop']) strip(e);
   add('PreToolUse', 'Read|Grep|Glob|Bash', `${cmd} guard`);
-  add('PostToolUse', 'Edit|Write|MultiEdit|Bash', `${cmd} hook post`);
+  add('PostToolUse', 'Read|Edit|Write|MultiEdit|NotebookEdit|Bash|TodoWrite', `${cmd} hook post`);
   add('PostToolUseFailure', 'Bash', `${cmd} hook post`);
   add('UserPromptSubmit', '', `${cmd} hook prompt`);
   add('Stop', '', `${cmd} hook stop`);
@@ -81,7 +83,7 @@ export function init(root, cmd = cliCommand(), { route = 'balanced', format = tr
   const [command, ...pre] = cmd.startsWith('node ') ? ['node', JSON.parse(cmd.slice(5))] : cmd.split(' ');
   m.mcpServers.tokenbuild = { command, args: [...pre, 'mcp'] };
   fs.writeFileSync(mp, JSON.stringify(m, null, 2) + '\n');
-  done.push('.mcp.json: tb_map, tb_find, tb_pack tools');
+  done.push('.mcp.json: tb_map, tb_find, tb_pack, tb_brief, tb_verify, tb_task tools');
 
   // 4. .tokenbuild/run: the Output Shrinker, callable as a short path
   const wp = path.join(tbDir(root), 'run');

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { isJunk, readJSON, writeJSON, tbDir, appendLedger, num } from './util.mjs';
 import { isNoisy } from './shrink.mjs';
 import { licensed } from './license.mjs';
+import * as ctx from './ctx.mjs';
 
 export const MAX_READ_BYTES = 60_000; // ~15K tokens
 
@@ -38,16 +39,13 @@ export function decide(input, root) {
     const key = `${f}|${ti.offset || 0}|${ti.limit || 0}`;
     let st; try { st = fs.statSync(f); } catch { return null; }
     const tok = Math.ceil(st.size / 4);
-    const once = (k, reason) => { // second identical attempt is allowed: Claude may truly need it
-      if (state.blocked[k]) { delete state.blocked[k]; save(); return null; }
+    const once = (k, reason) => { // second identical attempt is allowed: Claude may truly need it; the saving is taken back
+      if (state.blocked[k]) { delete state.blocked[k]; save(); appendLedger(root, { ev: 'undo', of: 'block', tok }); return null; }
       state.blocked[k] = 1; save(); return { reason, tok };
     };
     if (isJunk(rel(f))) return once(key, `TokenBuild: ${rel(f)} is generated/vendored (~${num(tok)} tokens). Read the source file or package.json instead. Retry only if you truly need it.`);
     if (st.size > MAX_READ_BYTES && !ti.limit) return once(key, `TokenBuild: ${rel(f)} is ~${num(tok)} tokens. Use tb_find to get line numbers, then Read with offset/limit. Retry to read it all anyway.`);
-    const sig = `${st.mtimeMs}:${st.size}`;
-    if (state.reads[key] === sig) return once(key + '#re', `TokenBuild: ${rel(f)} is unchanged since you last read it this session; it is already in your context. Retry if it was compacted away.`);
-    state.reads[key] = sig; save();
-    return null;
+    return ctx.onRead(input, root, f, rel(f));
   }
   if (tool === 'Bash' && isNoisy(ti.command)) {
     // Once per command per session: point Claude at the shrinker. Claude re-runs it wrapped, through
@@ -72,6 +70,7 @@ export function decide(input, root) {
 export function reset(input, root) {
   const sid = String(input.session_id || 'none').replace(/[^\w-]/g, '');
   try { fs.rmSync(path.join(tbDir(root), 'state', `${sid}.json`)); } catch {}
+  ctx.reset(input, root);
 }
 
 export async function runGuard(mode = 'pre') {

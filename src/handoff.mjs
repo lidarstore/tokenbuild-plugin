@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { tbDir, tokens, num, mkdirp } from './util.mjs';
 import { firstError } from './stuck.mjs';
+import * as task from './task.mjs';
 
 export const HANDOFF_AT = 120_000;   // context size (tokens) at which we suggest a fresh start
 const MAX_CHARS = 6000;              // ~1.5K tokens
@@ -84,6 +85,15 @@ export function build(lines, { sessionId = '', root = '' } = {}) {
 export function write(root, transcript, sessionId) {
   let lines; try { lines = fs.readFileSync(transcript, 'utf8').split('\n'); } catch { return null; }
   const r = build(lines, { sessionId, root });
+  // Task state adds what the transcript can't show plainly: verified facts, open questions, claims.
+  const t = task.load(root), extra = [];
+  if (Date.now() - t.at < 12 * 36e5) {
+    if (t.facts.length) extra.push('## Verified facts', ...t.facts.map((f) => '- ' + f), '');
+    if (t.questions.length) extra.push('## Open questions', ...t.questions.map((q) => '- ' + q), '');
+    const claimed = t.plan.filter((x) => x.claim && x.status !== 'completed');
+    if (claimed.length) extra.push('## Claimed by other agents', ...claimed.map((x) => `- ${x.text} (${x.claim})`), '');
+  }
+  if (extra.length) { r.md = r.md.replace('## Next', extra.join('\n') + '## Next') + '\nCall tb_task for the live task state.'; r.tokens = tokens(r.md); }
   mkdirp(tbDir(root));
   fs.writeFileSync(handoffPath(root), r.md + '\n');
   return r;

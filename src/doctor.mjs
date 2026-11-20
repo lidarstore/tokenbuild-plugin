@@ -1,5 +1,6 @@
 // `tokenbuild doctor`: one short checklist of what's on in this project and the one next step.
 // Run by the user (or the plugin's /tokenbuild:setup), so it may check the plan online.
+import { TEST, runnerFor } from './verify.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tbDir, readJSON, num } from './util.mjs';
@@ -35,10 +36,16 @@ export async function doctor(root, { plugin = false } = {}) {
   if (!plugin && !proj) todo.push('Install the plugin in Claude Code, or run: npx tokenbuild init');
 
   const idx = readJSON(path.join(tbDir(root), 'index.json'), null);
-  lines.push(idx ? `✓ Repo index: ${num(Object.keys(idx.files || {}).length)} files` : '· Repo index: builds itself the first time Claude asks for files');
+  lines.push(idx ? `✓ Repo index: ${num(Object.keys(idx.files || {}).length)} files` : '· Repo index: builds itself in the background when a Claude Code session starts');
+  const tests = idx ? Object.keys(idx.files || {}).filter((f) => TEST.test(f)) : [];
+  const run = tests.map((t) => runnerFor(root, t)).find(Boolean);
+  const vcfg = readJSON(path.join(tbDir(root), 'config.json'), {}).verify;
+  lines.push(vcfg === false ? '· Verify Loop: off ("verify": false in .tokenbuild/config.json)'
+    : run ? `✓ Verify Loop: runs affected tests with \`${run.cmd.replace(/ \{(files|dirs)\}/, '')}\` after edits (${num(tests.length)} test file${tests.length === 1 ? "" : "s"})`
+    : '· Verify Loop: no supported test runner found (node --test, Vitest, Jest, pytest, go test), or set "verify" to your command with {files}');
   const mem = readJSON(path.join(tbDir(root), 'memory.json'), null);
   const learned = Object.keys(mem?.files || {}).length;
-  lines.push(learned ? `✓ Repo Memory: learned from ${num(learned)} edited files` : '· Repo Memory: learns as Claude edits files');
+  lines.push(learned ? `✓ Repo Memory: learned from ${num(learned)} edited file${learned === 1 ? "" : "s"}` : '· Repo Memory: learns as Claude edits files');
   const cfg = readJSON(path.join(tbDir(root), 'config.json'), {});
   lines.push(cfg.boost ? `✓ Local Boost: on${cfg.model ? ` (${cfg.model})` : ''}` : '· Local Boost: off (optional, free local model)');
 
