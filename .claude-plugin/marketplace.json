@@ -7,7 +7,7 @@
       "name": "tokenbuild",
       "displayName": "TokenBuild",
       "description": "Cuts Claude Code token use with local tools (Loop Breaker, Fresh Start, Repo Memory, Output Shrinker, Waste Guard, repo index) and shows what you saved.",
-      "source": { "source": "npm", "package": "tokenbuild" },
+      "source": "./",
       "homepage": "https://www.tokenbuild.ai",
       "category": "productivity"
     }

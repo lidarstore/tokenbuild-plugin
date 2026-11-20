@@ -1,0 +1,24 @@
+TokenBuild Proprietary License
+
+Copyright (c) 2026 TokenBuild LLC. All rights reserved.
+
+This software, including the TokenBuild command-line tool and the TokenBuild
+plugin for Claude Code (the "Software"), is licensed, not sold.
+
+You may install and use the Software only:
+  (a) to run the free Waste Audit (`tokenbuild audit`), and
+  (b) for the paid tools, while you hold an active TokenBuild trial or plan,
+under the TokenBuild Terms of Service at https://www.tokenbuild.ai/terms.html.
+
+You may read the source code to understand and evaluate what the Software does.
+You may not, except as the law expressly allows: copy, modify, merge, publish,
+distribute, sublicense, sell or rent the Software or any part of it; remove,
+disable or work around its plan check; or use it to build a competing product.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL TOKENBUILD LLC BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR ITS USE, EXCEPT AS THE TERMS OF SERVICE PROVIDE.
+
+Contact: support@tokenbuild.ai
