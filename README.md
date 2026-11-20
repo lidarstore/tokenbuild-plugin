@@ -7,11 +7,10 @@
 In Claude Code:
 
 ```
-/plugin marketplace add lidarstore/tokenbuild-plugin
-/plugin install tokenbuild@tokenbuild
+npx tokenbuild install
 ```
+One line, in your terminal (not inside Claude Code). It adds the marketplace, installs the plugin and asks for your CLI key. Inside Claude Code instead, send these as two separate messages: `/plugin marketplace add lidarstore/tokenbuild-plugin`, then `/plugin install tokenbuild@tokenbuild`.
 
-On Claude Code older than 2.1.275, use two steps: `/plugin marketplace add lidarstore/tokenbuild-plugin`, then `/plugin install tokenbuild@tokenbuild`.
 
 When asked, paste your CLI key from [app.tokenbuild.ai/billing](https://app.tokenbuild.ai/billing) (needs a trial or plan). Claude Code keeps it in your system's secure storage; change it later with `/plugin configure tokenbuild@tokenbuild`. Then run `/tokenbuild:setup` to check everything is on.
 
