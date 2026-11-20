@@ -41,6 +41,8 @@ Prefer a terminal? `npx tokenbuild login <key>` once, then `npx tokenbuild init`
 | CLAUDE.md Compiler | Moves folder-only sections of CLAUDE.md into that folder, where Claude Code loads them on demand (`tokenbuild claudemd`) |
 | Context GC | When most of a big conversation is dead weight, saves a clean note to restart from |
 | Budget Forecast | Similar past tasks' median cost in the brief; a warning past twice that |
+| Recipe Compiler | Work you repeat becomes a Claude Code skill in `.claude/skills/tb-recipe-*`, written from measured history: files in order, the check, past errors. Retired automatically if it doesn't save (`tokenbuild recipes`) |
+| Repo Shape Optimizer | Measured read costs per file and section show what to split or co-locate so the repo is cheaper for Claude; `--plan` turns a suggestion into a Task State plan, with before/after (`tokenbuild shape`, `tb_shape`) |
 | Loop Breaker | Same failure three times, or Claude undoing its own edit: Claude is told what was tried and to change approach |
 | Fresh Start | Past ~120K tokens, a handoff note is saved; `/clear` and the new session starts from it at about 2K tokens |
 | Repo Memory | Learns which files tasks change and which change together; points similar tasks at them |
@@ -60,6 +62,7 @@ Your source code, file contents and prompts never leave your machine. TokenBuild
 - **Runs on your machine:** Node.js scripts in this plugin, started by Claude Code hooks (before and after tool calls, when you send a prompt, at the end of a turn, at session start and before compacting) and by a local MCP server. Each hook prints at most a short note into Claude's context, such as "this check failed the same way 3 times".
 - **Runs your tests after edits:** the Verify Loop runs your project's own test runner (node --test, Vitest, Jest, pytest or go test, detected from your config) on the test files an edit can affect, in the background, with a 2-minute limit. Set `"verify": false` in `.tokenbuild/config.json` to turn it off, or set `"verify"` to your own command with `{files}`.
 - **Reads Claude Code's session transcript locally** for the Real Meter, Context Profiler, Narration Meter, Cache Keeper and Exploration Memo. Usage counts go to your dashboard as totals; transcript text never leaves your machine.
+- **Writes recipe skills into your repo:** `.claude/skills/tb-recipe-*/SKILL.md`, so teammates get them through git. Delete the marker line to keep your own edits; `"recipes": false` turns this off.
 - **Control groups:** about 10% of sessions run with one feature off so its effect can be measured. Set `"holdout": 0` in `.tokenbuild/config.json` to opt out.
 - **Runs local tools you ask for:** `tokenbuild diet` starts your configured stdio MCP servers once to measure their tool lists; `tb_docs` for Python imports the module to read its docstring; Edit Preflight runs `node --check` or Python's parser on the edited file.
 - **Runs commands only when asked:** `tokenbuild run <command>` runs the command Claude or you give it. At the end of a turn, auto-format runs the formatter your project already configures (Prettier, Ruff, gofmt and similar) on files Claude edited; set `"format": false` in `.tokenbuild/config.json` to turn it off.
