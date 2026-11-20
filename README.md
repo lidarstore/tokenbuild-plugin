@@ -9,7 +9,7 @@ In Claude Code:
 ```
 npx tokenbuild install
 ```
-One line, in your terminal (not inside Claude Code). It asks for your CLI key, adds the marketplace and installs the plugin. With only the Claude desktop app (no `claude` command), it adds TokenBuild to Claude Code's settings instead: quit and reopen the app to finish. Inside Claude Code instead, send these as two separate messages: `/plugin marketplace add lidarstore/tokenbuild-plugin`, then `/plugin install tokenbuild@tokenbuild`.
+One line, in your terminal (not inside Claude Code). It asks for your CLI key, adds the marketplace and installs the plugin. With only the Claude desktop app (no `claude` command), it offers to install Anthropic's `@anthropic-ai/claude-code` first. Inside Claude Code instead, send these as two separate messages: `/plugin marketplace add lidarstore/tokenbuild-plugin`, then `/plugin install tokenbuild@tokenbuild`.
 
 
 When asked, paste your CLI key from [app.tokenbuild.ai/billing](https://app.tokenbuild.ai/billing) (needs a trial or plan). Claude Code keeps it in your system's secure storage; change it later with `/plugin configure tokenbuild@tokenbuild`. Then run `/tokenbuild:setup` to check everything is on.
