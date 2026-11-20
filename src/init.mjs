@@ -10,6 +10,9 @@ const BLOCK = (scout) => `<!-- tokenbuild -->
 - Read line ranges of large files. TokenBuild answers re-reads of unchanged lines from context.
 - After edits, TokenBuild runs only the affected tests and reports one line: don't run the full suite.
 - Subagents and new sessions: tb_task has the live plan; claim an item before working on it.
+- Multi-line change to lines you've read: tb_edit (no old text). Same change in many files: tb_apply.
+- Library API questions: tb_docs (installed version). Before exploring how something works: tb_memo get; after: tb_memo save.
+- Keep replies short: don't recap tool results or what you just did.
 - Run tests, builds, installs and linters as \`.tokenbuild/run <command>\`: errors + summary, full log saved.${scout ? '\n- Delegate searches and log reading to the tb-scout agent; it runs on a cheaper model.' : ''}
 <!-- /tokenbuild -->`;
 
@@ -51,7 +54,7 @@ export function init(root, cmd = cliCommand(), { route = 'balanced', format = tr
   const strip = (event) => { s.hooks[event] = (s.hooks[event] || []).map((g) => ({ ...g, hooks: (g.hooks || []).filter((h) => !ours(h)) })).filter((g) => g.hooks.length); };
   const add = (event, matcher, command) => { s.hooks[event].push({ ...(matcher ? { matcher } : {}), hooks: [{ type: 'command', command }] }); };
   for (const e of ['PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'UserPromptSubmit', 'PreCompact', 'SessionStart', 'Stop']) strip(e);
-  add('PreToolUse', 'Read|Grep|Glob|Bash', `${cmd} guard`);
+  add('PreToolUse', 'Read|Grep|Glob|Bash|Edit|MultiEdit|Write', `${cmd} guard`);
   add('PostToolUse', 'Read|Edit|Write|MultiEdit|NotebookEdit|Bash|TodoWrite', `${cmd} hook post`);
   add('PostToolUseFailure', 'Bash', `${cmd} hook post`);
   add('UserPromptSubmit', '', `${cmd} hook prompt`);
@@ -83,7 +86,7 @@ export function init(root, cmd = cliCommand(), { route = 'balanced', format = tr
   const [command, ...pre] = cmd.startsWith('node ') ? ['node', JSON.parse(cmd.slice(5))] : cmd.split(' ');
   m.mcpServers.tokenbuild = { command, args: [...pre, 'mcp'] };
   fs.writeFileSync(mp, JSON.stringify(m, null, 2) + '\n');
-  done.push('.mcp.json: tb_map, tb_find, tb_pack, tb_brief, tb_verify, tb_task tools');
+  done.push('.mcp.json: tb_map, tb_find, tb_pack, tb_brief, tb_verify, tb_task, tb_edit, tb_apply, tb_docs, tb_memo, tb_profile tools');
 
   // 4. .tokenbuild/run: the Output Shrinker, callable as a short path
   const wp = path.join(tbDir(root), 'run');

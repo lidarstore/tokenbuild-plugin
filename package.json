@@ -1,6 +1,6 @@
 {
   "name": "tokenbuild",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Build More. Use Less. Cut Claude Code token use and prove the saving.",
   "type": "module",
   "bin": {

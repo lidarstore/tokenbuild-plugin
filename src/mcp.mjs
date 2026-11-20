@@ -5,6 +5,11 @@ import { packBoost } from './memory.mjs';
 import { impacted, runnerFor, runTests, lastResult } from './verify.mjs';
 import { load as loadTask, render, claim, fact as taskFact, question as taskQuestion } from './task.mjs';
 import { build as buildBrief } from './brief.mjs';
+import { anchorEdit, codemod } from './anchor.mjs';
+import { lookup as docsLookup } from './docs.mjs';
+import { save as memoSave, find as memoFind } from './memo.mjs';
+import { profile, readTranscript, render as renderProfile, lastTranscript } from './profile.mjs';
+import { schedule as verifySchedule } from './verify.mjs';
 import { appendLedger, VERSION } from './util.mjs';
 import { config, detect, digest } from './local.mjs';
 import { licensed, explain, refreshIfDue } from './license.mjs';
@@ -26,6 +31,16 @@ const TOOLS = [
       item: { type: 'string', description: 'Plan item number (1-based) or text, for claim/done' },
       text: { type: 'string', description: 'Fact or question text' },
       agent: { type: 'string', description: 'Your agent name, for claim' } } } },
+  { name: 'tb_edit', description: 'Replace lines start..end of a file you have read this session with `text`, without writing the old lines back out (saves the output tokens of old_string). Safe: applies only if those lines are unchanged since you read them, and refuses edits that break syntax. Use for multi-line changes; then keep using tb_edit for that file.',
+    inputSchema: { type: 'object', properties: { file: { type: 'string' }, start: { type: 'number', description: 'First line to replace (1-based, as shown by Read)' }, end: { type: 'number', description: 'Last line to replace (inclusive). end = start - 1 inserts before start' }, text: { type: 'string', description: 'New lines (empty deletes)' } }, required: ['file', 'start', 'end', 'text'] } },
+  { name: 'tb_apply', description: 'Codemod: one find/replace across many files, applied locally, with a compact summary. Use instead of repeating the same Edit in file after file (renames, API migrations, import rewrites).',
+    inputSchema: { type: 'object', properties: { find: { type: 'string' }, replace: { type: 'string' }, regex: { type: 'boolean', description: 'Treat find as a JS regex ($1 in replace)' }, files: { type: 'array', items: { type: 'string' }, description: 'Paths, folders or globs to limit scope' }, dry: { type: 'boolean', description: 'Preview only' } }, required: ['find', 'replace'] } },
+  { name: 'tb_docs', description: 'How a library function/class works at the version installed in this project: declaration + doc comments from node_modules .d.ts (JS/TS: "package#symbol"), Python signature + docstring ("pkg.module.name"), or go doc. ~300 tokens; use instead of web searches or guessing an API.',
+    inputSchema: { type: 'object', properties: { symbol: { type: 'string' }, lang: { type: 'string', enum: ['js', 'py', 'go'] } }, required: ['symbol'] } },
+  { name: 'tb_memo', description: 'Saved answers about this repo ("where is auth handled?"), returned only while the files they rest on are unchanged. get: look up before exploring. save: after you worked out where/how something works, save the answer with the files it rests on, so no session has to explore it again.',
+    inputSchema: { type: 'object', properties: { action: { type: 'string', enum: ['get', 'save'] }, question: { type: 'string' }, answer: { type: 'string' }, files: { type: 'array', items: { type: 'string' } } }, required: ['question'] } },
+  { name: 'tb_profile', description: 'What fills your context window right now, by source, and how much is dead weight. Use when the conversation feels heavy, before deciding to continue or start fresh.',
+    inputSchema: { type: 'object', properties: {} } },
 ];
 // Listed only when Local Boost is on and a local model is available, so it costs nothing otherwise.
 const DIGEST = { name: 'tb_digest', description: 'Ask a local model (on this machine, zero Claude tokens) a question about a large file or a .tokenbuild/logs log. Returns a short answer with line numbers. Use before reading a big file or log in full.',
@@ -42,6 +57,17 @@ export async function handle(msg, root, state) {
     const l = licensed();
     if (!l.ok) return ok({ content: [{ type: 'text', text: explain(l) }], isError: true });
     if (params.name === 'tb_digest') return ok({ content: [{ type: 'text', text: await digest(root, String(a.path || ''), String(a.question || '')) }] });
+    const say = (text) => ok({ content: [{ type: 'text', text }] });
+    if (params.name === 'tb_edit') { const r = await anchorEdit(root, a, { schedule: (r_, s_, f_) => verifySchedule(r_, s_, f_) }); return say(r.error ? `Not applied: ${r.error}` : r.text); }
+    if (params.name === 'tb_apply') { const r = codemod(root, a, { schedule: (r_, s_, f_) => verifySchedule(r_, s_, f_) }); return say(r.error || r.text); }
+    if (params.name === 'tb_docs') { const t = docsLookup(root, a.symbol, a.lang); appendLedger(root, { ev: 'docs' }); return say(t); }
+    if (params.name === 'tb_memo') {
+      if (a.action === 'save') { const r = memoSave(root, a.question, a.answer, a.files || []); appendLedger(root, { ev: 'memo_save' }); return say(r.error || `Saved (rests on ${r.files} file${r.files === 1 ? '' : 's'}; returned only while they're unchanged).`); }
+      const hits = memoFind(root, a.question || '');
+      if (hits.length) appendLedger(root, { ev: 'memo_hit', n: hits.length });
+      return say(hits.length ? hits.map((h) => `Q: ${h.q}\nA: ${h.a}\n(files: ${h.files.join(', ') || 'none'}; unchanged)`).join('\n\n') : 'No saved answer. Explore, then save what you find with action "save".');
+    }
+    if (params.name === 'tb_profile') { const t = lastTranscript(root); return say(t ? renderProfile(profile(readTranscript(t), root)) : 'No session transcript seen yet.'); }
     if (params.name === 'tb_verify') {
       const f = String(a.file || '');
       let text;

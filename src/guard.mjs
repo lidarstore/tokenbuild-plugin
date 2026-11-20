@@ -6,6 +6,8 @@ import { isJunk, readJSON, writeJSON, tbDir, appendLedger, num } from './util.mj
 import { isNoisy } from './shrink.mjs';
 import { licensed } from './license.mjs';
 import * as ctx from './ctx.mjs';
+import { preflight } from './preflight.mjs';
+import { held } from './meter.mjs';
 
 export const MAX_READ_BYTES = 60_000; // ~15K tokens
 
@@ -27,6 +29,7 @@ export function rootOf(dir) {
 
 // Returns null to allow, or { reason, tok } to block.
 export function decide(input, root) {
+  let _cfg; const cfg = () => (_cfg ??= readJSON(path.join(tbDir(root), 'config.json'), {}));
   const { tool_name: tool, tool_input: ti = {}, session_id: sid = 'none' } = input;
   const statePath = path.join(tbDir(root), 'state', `${String(sid).replace(/[^\w-]/g, '')}.json`);
   const state = readJSON(statePath, { reads: {}, blocked: {} });
@@ -45,7 +48,10 @@ export function decide(input, root) {
     };
     if (isJunk(rel(f))) return once(key, `TokenBuild: ${rel(f)} is generated/vendored (~${num(tok)} tokens). Read the source file or package.json instead. Retry only if you truly need it.`);
     if (st.size > MAX_READ_BYTES && !ti.limit) return once(key, `TokenBuild: ${rel(f)} is ~${num(tok)} tokens. Use tb_find to get line numbers, then Read with offset/limit. Retry to read it all anyway.`);
-    return ctx.onRead(input, root, f, rel(f));
+    return ctx.onRead(input, root, f, rel(f), { dry: held(input, cfg(), 'ledger') });
+  }
+  if ((tool === 'Edit' || tool === 'MultiEdit' || tool === 'Write') && cfg().preflight !== false && !held(input, cfg(), 'preflight')) {
+    return preflight(input, root, state, save);
   }
   if (tool === 'Bash' && isNoisy(ti.command)) {
     // Once per command per session: point Claude at the shrinker. Claude re-runs it wrapped, through

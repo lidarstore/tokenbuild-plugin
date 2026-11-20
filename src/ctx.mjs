@@ -10,20 +10,20 @@ import { diffLines, formatHunks } from './diff.mjs';
 export const DEFAULT_LIMIT = 2000;          // Claude Code's Read default line count
 const MAX_SNAP = 400_000;
 const sidOf = (input) => String(input.session_id || 'none').replace(/[^\w-]/g, '');
-const statePath = (root, sid) => path.join(tbDir(root), 'state', `ctx-${sid}.json`);
-const snapPath = (root, sid, rel) => path.join(tbDir(root), 'state', 'snap', sid, hash(rel));
-const load = (root, sid) => readJSON(statePath(root, sid), { turn: 0, files: {}, blocked: {} });
+export const statePath = (root, sid) => path.join(tbDir(root), 'state', `ctx-${sid}.json`);
+export const snapPath = (root, sid, rel) => path.join(tbDir(root), 'state', 'snap', sid, hash(rel));
+export const load = (root, sid) => readJSON(statePath(root, sid), { turn: 0, files: {}, blocked: {} });
 const covered = (ranges, a, b) => ranges.some(([x, y]) => x <= a && y >= b);
-const sigOf = (st) => `${st.mtimeMs}:${st.size}`;
+export const sigOf = (st) => `${st.mtimeMs}:${st.size}`;
 
-function snap(root, sid, rel, text) {
+export function snap(root, sid, rel, text) {
   if (text.length > MAX_SNAP) return false;
   const p = snapPath(root, sid, rel); mkdirp(path.dirname(p)); fs.writeFileSync(p, text); return true;
 }
 const regionTok = (lines, a, b) => tokens(lines.slice(a - 1, b).join('\n'));
 
 // PreToolUse Read. Returns null (allow) or { reason, tok, ev } (answer instead of the read).
-export function onRead(input, root, f, rel) {
+export function onRead(input, root, f, rel, { dry = false } = {}) {
   const ti = input.tool_input || {}, sid = sidOf(input);
   const a = Math.max(1, Number(ti.offset) || 1), b = a + (Number(ti.limit) || DEFAULT_LIMIT) - 1;
   let stat; try { stat = fs.statSync(f); } catch { return null; }
@@ -34,9 +34,10 @@ export function onRead(input, root, f, rel) {
   const record = (text) => { const ok = snap(root, sid, rel, text); s.files[rel] = { sig, turn: s.turn, ranges: [[a, b, s.turn]], ok }; save(); };
   let text; try { text = fs.readFileSync(f, 'utf8'); } catch { return null; }
   if (!e || !e.ok) { record(text); return null; }
+  if (e.anchored) { delete e.anchored; e.sig = sig; e.ranges.push([a, b, s.turn]); save(); return null; }
   const lines = text.split('\n'), end = Math.min(b, lines.length), full = regionTok(lines, a, end);
   const when = e.ranges.filter(([x, y]) => x <= a && y >= end).map((r) => r[2]).pop() ?? e.turn;
-  const answer = (reason) => { const tok = Math.max(0, full - tokens(reason)); if (tok < 50) return null; s.blocked[key] = tok; save(); return { reason, tok, ev: 'dedup' }; };
+  const answer = (reason) => { const tok = Math.max(0, full - tokens(reason)); if (tok < 50 || dry) { save(); return null; } s.blocked[key] = tok; save(); return { reason, tok, ev: 'dedup' }; };
   if (e.sig === sig) {
     if (covered(e.ranges, a, end)) return answer(`TokenBuild context ledger: ${rel} lines ${a}-${end} are unchanged since you read them${when ? ` at turn ${when}` : ''}, so they are already in your context. Retry the same Read only if they were compacted away.`);
     e.ranges.push([a, b, s.turn]); save(); return null;

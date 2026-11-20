@@ -1,7 +1,7 @@
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Read|Grep|Glob|Bash", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/tokenbuild.mjs", "guard"], "timeout": 10 }] }
+      { "matcher": "Read|Grep|Glob|Bash|Edit|MultiEdit|Write", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/tokenbuild.mjs", "guard"], "timeout": 10 }] }
     ],
     "PostToolUse": [
       { "matcher": "Read|Edit|Write|MultiEdit|NotebookEdit|Bash|TodoWrite", "hooks": [{ "type": "command", "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/bin/tokenbuild.mjs", "hook", "post"], "timeout": 10 }] }

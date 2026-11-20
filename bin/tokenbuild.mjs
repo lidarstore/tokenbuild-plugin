@@ -42,6 +42,13 @@ const HELP = `tokenbuild — Build More. Use Less.
   stats                                         Tokens kept out of context in this repo
   verify [file]                                 Run only the tests a change to <file> can affect (or show the last result)
   task [--reset]                                Show the task state TokenBuild keeps for handoffs and subagents
+  meter [--json]                                Real metered tokens and cost (from Claude Code's own usage records)
+  profile                                       What fills Claude's context right now, and how much is dead weight
+  proof                                         Each feature's effect, measured against control-group sessions
+  permissions [--apply]                         Commands you approve every time -> allow rules
+  diet [--apply]                                MCP servers whose tool definitions cost tokens every turn but go unused
+  claudemd [--apply]                            Move folder-specific CLAUDE.md sections to that folder (loaded on demand)
+  docs <symbol>                                 Installed-version docs for a library symbol (JS "pkg#name", Python, Go)
   boost [on|off] [--model name]                 Local Boost: a local model (Ollama) reads big files for Claude
   ask "<question>" <file>                       Ask the local model about a file (Local Boost)
   sync                                          Send daily counts (no code) to your dashboard
@@ -54,7 +61,7 @@ const HELP = `tokenbuild — Build More. Use Less.
 
 // Paid tools need an active trial or plan (cached check; offline-safe). The audit is free.
 // init and login check online; hooks, run and mcp degrade to doing nothing instead of failing.
-const GATED = new Set(['index', 'map', 'find', 'pack', 'boost', 'ask', 'handoff', 'verify', 'task']);
+const GATED = new Set(['index', 'map', 'find', 'pack', 'boost', 'ask', 'handoff', 'verify', 'task', 'meter', 'profile', 'proof', 'permissions', 'diet', 'claudemd', 'docs']);
 if (GATED.has(cmd)) {
   const { licensed, explain } = await import('../src/license.mjs');
   const l = licensed();
@@ -125,7 +132,7 @@ switch (cmd) {
     const { num } = await import('../src/util.mjs');
     const { tally } = await import('../src/ledger.mjs');
     const t = tally(readLedger());
-    const total = t.tok_blocked + t.tok_shrunk + t.tok_local + t.tok_handoff + t.tok_dedup;
+    const total = t.tok_blocked + t.tok_shrunk + t.tok_local + t.tok_handoff + t.tok_dedup + t.tok_anchor;
     out([`~${num(total)} tokens kept out of Claude's context in this repo`,
       `  Waste Guard     ${num(t.blocks)} reads blocked, ~${num(t.tok_blocked)} tokens`,
       `  Context Ledger  ${num(t.dedups)} re-reads answered from context or as a diff, ~${num(t.tok_dedup)} tokens`,
@@ -139,6 +146,12 @@ switch (cmd) {
       `  Task Brief      ${num(t.briefs)} briefs`,
       `  Next-Read       ${num(t.predicts)} predictions, ${num(t.predict_hits)} opened`,
       `  Fingerprints    ${num(t.fp_hits)} known fixes found`,
+      `  Anchor Edits    ${num(t.anchors)} edits, ~${num(t.tok_anchor)} output tokens not written`,
+      `  Edit Preflight  ${num(t.preflights)} broken edits stopped before they landed`,
+      `  Codemods        ${num(t.codemods)} runs, ${num(t.codemod_files)} files`,
+      `  Memo            ${num(t.memo_hits)} saved answers reused, ${num(t.memo_saves)} saved`,
+      `  Cache Keeper    ${num(t.cache_breaks)} cache rebuilds seen, ${num(t.ck_blocks)} offered a fresh start; Context GC ${num(t.gcs)}`,
+      `  Real Meter      ${num(t.m_in + t.m_cache_read + t.m_cache_write + t.m_out)} tokens metered (tokenbuild meter)`,
       `  Repo tools      ${num(t.tool_calls)} calls (tb_map, tb_find, tb_pack, tb_brief)`].join('\n'));
     break;
   }
@@ -219,6 +232,72 @@ switch (cmd) {
     const r = await V.runTests(root, tests);
     out(r.ok ? `Pass: ${tests.join(', ')} (${(r.ms / 1000).toFixed(1)}s)` : `Fail: ${r.fail}\nLog: ${r.log}`);
     if (!r.ok) process.exitCode = 1;
+    break;
+  }
+  case 'meter': {
+    const { num } = await import('../src/util.mjs');
+    const { tally } = await import('../src/ledger.mjs');
+    const t = tally(readLedger());
+    const tot = t.m_in + t.m_cache_read + t.m_cache_write + t.m_out;
+    if (flags.json) { out(JSON.stringify({ input: t.m_in, cache_read: t.m_cache_read, cache_write: t.m_cache_write, output: t.m_out, usd: t.m_usd_micro / 1e6, cache_breaks: t.cache_breaks, narration: t.text_tok ? t.narr_tok / t.text_tok : 0 })); break; }
+    if (!tot) { out('Nothing metered yet: the Real Meter reads usage from Claude Code sessions in this project as they happen.'); break; }
+    out([`Real Meter (from Claude Code's own usage records, this repo):`,
+      `  ${num(tot)} tokens processed, ≈$${(t.m_usd_micro / 1e6).toFixed(2)} at API list prices`,
+      `  input ${num(t.m_in)} · cache reads ${num(t.m_cache_read)} · cache writes ${num(t.m_cache_write)} · output ${num(t.m_out)}`,
+      `  cache rebuilds: ${num(t.cache_breaks)} (~${num(t.tok_cache_break)} tokens re-written)`,
+      `  recap share of Claude's writing: ${t.text_tok ? Math.round((t.narr_tok / t.text_tok) * 100) : 0}%`].join('\n'));
+    break;
+  }
+  case 'profile': {
+    const P = await import('../src/profile.mjs');
+    const t = P.lastTranscript(root);
+    out(t ? P.render(P.profile(P.readTranscript(t), root)) : 'No session transcript seen yet. Run this while a Claude Code session is open in this project.');
+    break;
+  }
+  case 'proof': {
+    const { num } = await import('../src/util.mjs');
+    const { proof } = await import('../src/meter.mjs');
+    const rows = proof(root);
+    const names = { ledger: 'Context Ledger', verify: 'Verify Loop', brief: 'Task Brief', predict: 'Next-Read', preflight: 'Edit Preflight' };
+    out(['Measured against control-group tasks (same features, this one off), median tokens per task:', ...rows.map((r) => r.cut === undefined
+      ? `  ${names[r.feature].padEnd(15)} collecting: ${r.nOff}/15 control tasks, ${r.nOn}/30 regular`
+      : `  ${names[r.feature].padEnd(15)} ${r.cut >= 0 ? '−' : '+'}${Math.abs(Math.round(r.cut * 100))}% tokens (${num(r.tokOn)} vs ${num(r.tokOff)}), replies ${r.turnsOn} vs ${r.turnsOff} (n=${r.nOn}/${r.nOff})`),
+    'Control groups: ~10% of sessions run with one feature off. Set "holdout": 0 in .tokenbuild/config.json to opt out.'].join('\n'));
+    break;
+  }
+  case 'permissions': {
+    const T = await import('../src/tune.mjs');
+    const sug = T.permissionSuggestions(root);
+    if (!sug.length) { out('No suggestions yet: TokenBuild suggests a rule after you approve the same safe command 5+ times.'); break; }
+    if (flags.apply) { const f = T.applyPermissions(root, sug); out(`Added ${sug.length} allow rule${sug.length > 1 ? 's' : ''} to ${path.relative(root, f)}: ${sug.map((x) => x.rule).join(', ')}`); break; }
+    out(['Commands you ran and approved every time (none ever denied):', ...sug.map((x) => `  ${x.rule.padEnd(32)} ${x.n}×`), 'Run `tokenbuild permissions --apply` to add them to .claude/settings.local.json.'].join('\n'));
+    break;
+  }
+  case 'diet': {
+    const { num } = await import('../src/util.mjs');
+    const T = await import('../src/tune.mjs');
+    const d = await T.diet(root);
+    if (!d.rows.length) { out('No MCP servers configured for this project.'); break; }
+    const total = d.rows.reduce((a, r) => a + (r.tok || 0), 0);
+    out([`MCP tool definitions are sent with every request (~${num(total)} tokens measured). Calls over ${d.sessions} sessions:`,
+      ...d.rows.map((r) => `  ${r.name.padEnd(22)} ${r.tok == null ? '   n/a' : num(r.tok).padStart(6)} tok  ${String(r.tools ?? '?').padStart(3)} tools  ${String(r.calls).padStart(4)} calls  (${r.scope})`),
+      d.unused.length ? `Unused: ${d.unused.map((r) => r.name).join(', ')}. ${flags.apply ? '' : 'Run `tokenbuild diet --apply` to disable the project ones for this project.'}` : d.sessions < 5 ? 'Need 5+ sessions of usage before suggesting removals.' : 'Every server is used.'].join('\n'));
+    if (flags.apply && d.unused.length) { const proj = d.unused.filter((r) => r.scope === 'project').map((r) => r.name); if (proj.length) out(`Disabled for this project: ${proj.join(', ')} (in .claude/settings.local.json).`); const other = d.unused.filter((r) => r.scope !== 'project'); if (other.length) out(`User-level servers: remove with ${other.map((r) => `\`claude mcp remove ${r.name}\``).join(', ')} if you don't need them here.`); if (proj.length) T.applyDiet(root, proj); }
+    break;
+  }
+  case 'claudemd': {
+    const { num } = await import('../src/util.mjs');
+    const T = await import('../src/tune.mjs');
+    const c = T.compile(root);
+    if (c.error) { out(c.error); break; }
+    if (!c.moves.length && !c.dupes.length) { out(`CLAUDE.md is ~${num(c.total)} tokens, sent with every turn. Nothing to move: no section is about a single folder only.`); break; }
+    if (flags.apply && c.moves.length) { const f = T.applyCompile(root, c); out(`Moved ${c.moves.length} section${c.moves.length > 1 ? 's' : ''} (~${num(c.saved)} tokens per turn) to ${f.join(', ')}. Claude Code loads those when it works in that folder. Backup in .tokenbuild/backup/.`); break; }
+    out([`CLAUDE.md is ~${num(c.total)} tokens, sent with every turn.`, ...c.moves.map((m) => `  move "${m.head.replace(/^#+\s*/, '')}" (~${num(m.tok)} tok) → ${m.dir}/CLAUDE.md`), ...c.dupes.slice(0, 5).map((d) => `  duplicate line: ${d.slice(0, 70)}`), c.moves.length ? `Run \`tokenbuild claudemd --apply\` to move them (saves ~${num(c.saved)} tokens per turn outside those folders).` : ''].filter(Boolean).join('\n'));
+    break;
+  }
+  case 'docs': {
+    const { lookup } = await import('../src/docs.mjs');
+    out(lookup(root, args.join(' '), flags.lang));
     break;
   }
   case 'task': {
