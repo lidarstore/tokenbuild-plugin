@@ -9,6 +9,7 @@ This directory edition of TokenBuild has token-saving instructions only. The ful
 
 To switch, uninstall this edition, then run in Claude Code:
 
-/plugin install tokenbuild --marketplace lidarstore/tokenbuild-plugin
+/plugin marketplace add lidarstore/tokenbuild-plugin
+/plugin install tokenbuild@tokenbuild
 
 Install one edition, not both.

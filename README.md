@@ -7,7 +7,8 @@
 In Claude Code:
 
 ```
-/plugin install tokenbuild --marketplace lidarstore/tokenbuild-plugin
+/plugin marketplace add lidarstore/tokenbuild-plugin
+/plugin install tokenbuild@tokenbuild
 ```
 
 On Claude Code older than 2.1.275, use two steps: `/plugin marketplace add lidarstore/tokenbuild-plugin`, then `/plugin install tokenbuild@tokenbuild`.
