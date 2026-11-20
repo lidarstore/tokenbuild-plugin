@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "tokenbuild": {
-      "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/tokenbuild.mjs", "mcp"],
-      "env": { "TOKENBUILD_KEY": "${user_config.cli_key}" }
-    }
-  }
-}

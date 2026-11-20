@@ -1,15 +1,23 @@
 {
   "name": "tokenbuild",
-  "owner": { "name": "TokenBuild LLC", "email": "support@tokenbuild.ai" },
-  "metadata": { "description": "TokenBuild for Claude Code: Build More. Use Less." },
+  "owner": {
+    "name": "TokenBuild LLC",
+    "email": "support@tokenbuild.ai"
+  },
+  "metadata": {
+    "description": "TokenBuild for Claude Code: Build More. Use Less."
+  },
   "plugins": [
     {
       "name": "tokenbuild",
       "displayName": "TokenBuild",
-      "description": "Cuts Claude Code token use with local tools (Loop Breaker, Fresh Start, Repo Memory, Output Shrinker, Waste Guard, repo index) and shows what you saved.",
-      "source": "./",
+      "description": "Build More. Use Less. Cuts Claude Code token use and turns with local tools (Real Meter, Context Ledger, Anchor Edits, Edit Preflight, Verify Loop, Task Brief, Cache Keeper, Fingerprints, Task State, Loop Breaker, Fresh Start, Repo Memory, Output Shrinker, Waste Guard, repo index) and shows what you saved.",
       "homepage": "https://www.tokenbuild.ai",
-      "category": "productivity"
+      "category": "productivity",
+      "source": {
+        "source": "npm",
+        "package": "tokenbuild"
+      }
     }
   ]
 }
